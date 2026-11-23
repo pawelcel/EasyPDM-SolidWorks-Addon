@@ -2934,8 +2934,9 @@ Private Function IsFirstSheet(ByVal swModel As Object) As Boolean
 End Function
 
 ' The parts list of an assembly drawing, as in EasyPDM for FreeCAD: number, drawing number
-' (with the name's translations under it) and quantity of each direct component, numbered by
-' its position in the assembly's structure in EasyPDM. 90 mm wide against the frame's right
+' (with the name's translations under it), manufacturer / standard, order numbers and quantity
+' of each direct component, numbered by its position in the assembly's structure in EasyPDM.
+' 156 mm wide against the frame's right
 ' edge, on the processes table (bottom at procTop), header at the bottom and row 1 above it.
 ' When a column would reach the revisions table (firstTop) or the frame, the rest continues
 ' in a column to its left, with its own header and the same bottom line.
@@ -2953,8 +2954,9 @@ Private Sub BuildPartsList(ByVal swModel As Object, ByVal tb As Object, ByVal w 
 
     Dim labels As Object
     Set labels = JsonChild(tb, "labels")
-    Dim cNo() As String, cName() As String, cQty() As String, est() As Double
-    ReDim cNo(1 To n): ReDim cName(1 To n): ReDim cQty(1 To n): ReDim est(1 To n)
+    Dim cNo() As String, cName() As String, cQty() As String, cMaker() As String, cOrder() As String, est() As Double
+    ReDim cNo(1 To n): ReDim cName(1 To n): ReDim cQty(1 To n): ReDim cMaker(1 To n): ReDim cOrder(1 To n): ReDim est(1 To n)
+    Dim lines As Long
     Dim row As Object, trs As Object, tr As Object, cell As String
     For i = 1 To n
         Set row = bom(i)
@@ -2970,7 +2972,13 @@ Private Sub BuildPartsList(ByVal swModel As Object, ByVal tb As Object, ByVal w 
             Next tr
         End If
         cName(i) = cell
-        est(i) = EstRowHeight(CellLines(cell))
+        ' Manufacturer and standard, order numbers 1 and 2: each on a line of its own.
+        cMaker(i) = AddLines(WrapForCell(JsonGetString(row, "manufacturer", ""), 33, 2.6), WrapForCell(JsonGetString(row, "standard", ""), 33, 2.6))
+        cOrder(i) = AddLines(WrapForCell(JsonGetString(row, "orderNumber", ""), 27, 2.6), WrapForCell(JsonGetString(row, "orderNumber2", ""), 27, 2.6))
+        lines = CellLines(cell)
+        If CellLines(cMaker(i)) > lines Then lines = CellLines(cMaker(i))
+        If CellLines(cOrder(i)) > lines Then lines = CellLines(cOrder(i))
+        est(i) = EstRowHeight(lines)
     Next i
 
     Dim first As Long, last As Long, col As Long, used As Double, room As Double
@@ -2990,21 +2998,27 @@ Private Sub BuildPartsList(ByVal swModel As Object, ByVal tb As Object, ByVal w 
         m = last - first + 1
         title = "EasyPDM parts list"
         If col > 0 Then title = title & " " & (col + 1)
-        Set t = NewSheetTable(swModel, w - 0.01 - col * 0.09, procTop, SW_TABLE_ANCHOR_BOTTOM_RIGHT, m + 1, 3, title)
+        Set t = NewSheetTable(swModel, w - 0.01 - col * 0.156, procTop, SW_TABLE_ANCHOR_BOTTOM_RIGHT, m + 1, 5, title)
         If t Is Nothing Then Exit Sub
         t.SetColumnWidth 0, 0.01, 0
         t.SetColumnWidth 1, 0.066, 0
-        t.SetColumnWidth 2, 0.014, 0
+        t.SetColumnWidth 2, 0.036, 0
+        t.SetColumnWidth 3, 0.03, 0
+        t.SetColumnWidth 4, 0.014, 0
         ' Rows top to bottom: the column's last item down to its first, then the header.
         For j = 0 To m - 1
             k = last - j
             SetCell t, j, 0, cNo(k)
             SetCell t, j, 1, cName(k)
-            SetCell t, j, 2, cQty(k)
+            SetCell t, j, 2, cMaker(k)
+            SetCell t, j, 3, cOrder(k)
+            SetCell t, j, 4, cQty(k)
         Next j
         SetCell t, m, 0, LabelOf(labels, "bomNo", "No."), True
         SetCell t, m, 1, LabelOf(labels, "bomDrawingNumber", "Drawing number"), True
-        SetCell t, m, 2, LabelOf(labels, "bomQuantity", "Qty"), True
+        SetCell t, m, 2, LabelOf(labels, "bomManufacturer", "Manufacturer / Standard"), True
+        SetCell t, m, 3, LabelOf(labels, "bomOrderNumber", "Order number"), True
+        SetCell t, m, 4, LabelOf(labels, "bomQuantity", "Qty"), True
         LogLine "Parts list: column " & (col + 1) & " with items " & first & ".." & last
         first = last + 1
         col = col + 1
