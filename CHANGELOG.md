@@ -6,6 +6,10 @@ and the drawing sheet were released with EasyPDM itself; see the
 
 ## [Unreleased]
 
+### Added
+- **Parts list on assembly drawings.** On the first sheet of an assembly's drawing, Upload builds a parts list above the processes table, as EasyPDM for FreeCAD 0.9.9 does: number, drawing number (with the name's translations under it) and quantity of each direct component, numbered by its position in the assembly's structure in EasyPDM, 90 mm wide against the frame's right edge, continued in a column to the left when it would reach the revisions table or the top of the frame. Needs EasyPDM 0.9.4 or later.
+- **Balloons numbered from the parts list.** Every balloon on the drawing gets the number of the component it is attached to (through the component's EasyPDM item), so the balloons, the list and the structure in EasyPDM agree; a balloon on something not on the list keeps its text.
+
 ## [0.9.0]
 
 **In short:** the first release of EasyPDM for SolidWorks on its own, and the first with an add-in. An EasyPDM tab in the CommandManager with Upload, Download, Lock and Log in/out; a document panel in the Task Pane with the item's record, revision, status and lock, and for an assembly the tree of its components marked current or outdated; an Upload that refuses work built on outdated files; signing in through the browser, so SOLIDWORKS never sees your password; English, Polish and German, following SOLIDWORKS' language.

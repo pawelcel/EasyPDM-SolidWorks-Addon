@@ -157,6 +157,8 @@ Private swApp As Object
 Private Const SW_DOC_PART As Long = 1                      ' swDocumentTypes_e.swDocPART
 Private Const SW_DOC_ASSEMBLY As Long = 2                   ' swDocumentTypes_e.swDocASSEMBLY
 Private Const SW_DOC_DRAWING As Long = 3                    ' swDocumentTypes_e.swDocDRAWING
+Private Const SW_BALLOON_TEXT_CUSTOM As Long = 0            ' swBalloonTextContent_e.swBalloonTextCustom
+Private Const SW_TABLE_ANCHOR_BOTTOM_RIGHT As Long = 4      ' swBOMConfigurationAnchorType_e.swBOMConfigurationAnchor_BottomRight
 Private Const SW_CUSTOM_INFO_TEXT As Long = 30              ' swCustomInfoType_e.swCustomInfoText
 Private Const SW_CUSTOM_PROPERTY_REPLACE As Long = 2        ' swCustomPropertyAddOption_e.swCustomPropertyReplaceValue
 ' Bumped by hand on every change and written into the first log line, so a log shows at once
@@ -2798,6 +2800,12 @@ Private Sub DeleteEasyPdmSheetObjects(ByVal swModel As Object)
     DeleteFeaturesNamed swModel, "EasyPDM processes"
     DeleteFeaturesNamed swModel, "EasyPDM revisions"
     DeleteFeaturesNamed swModel, "EasyPDM logo"
+    ' The parts list of an assembly drawing, with its continuation columns.
+    DeleteFeaturesNamed swModel, "EasyPDM parts list"
+    Dim col As Long
+    For col = 2 To 6
+        DeleteFeaturesNamed swModel, "EasyPDM parts list " & col
+    Next col
 End Sub
 
 Private Function NewSheetTable(ByVal swModel As Object, ByVal x As Double, ByVal y As Double, ByVal anchorType As Long, ByVal rows As Long, ByVal cols As Long, ByVal title As String) As Object
@@ -2885,6 +2893,196 @@ Failed:
     LogLine "Logo: download failed (" & Err.Number & "): " & Err.Description
 End Function
 
+' Lines in a table cell (its text joined with vbLf), at least one.
+Private Function CellLines(ByVal cell As String) As Long
+    CellLines = UBound(Split(cell, vbLf)) + 1
+    If CellLines < 1 Then CellLines = 1
+End Function
+
+' A row's height in metres, estimated from its lines at the tables' 2.6 mm lettering. Used to
+' decide where the parts list breaks into a new column; the real height of a table already
+' on the sheet comes from TableHeight.
+Private Function EstRowHeight(ByVal lines As Long) As Double
+    EstRowHeight = lines * 0.0026 * 1.5 + 0.0025
+End Function
+
+' A table's height in metres: the sum of its rows as SolidWorks laid them out, or `estimate`
+' when the rows cannot be read.
+Private Function TableHeight(ByVal t As Object, ByVal estimate As Double) As Double
+    On Error Resume Next
+    Dim r As Long, total As Double, rh As Double
+    For r = 0 To t.RowCount - 1
+        rh = 0
+        rh = t.GetRowHeight(r)
+        If Err.Number <> 0 Or rh <= 0 Then
+            Err.Clear
+            LogLine "Sheet tables: row heights not readable, estimated " & Format(estimate * 1000, "0.0") & " mm"
+            TableHeight = estimate
+            Exit Function
+        End If
+        total = total + rh
+    Next r
+    TableHeight = total
+End Function
+
+Private Function IsFirstSheet(ByVal swModel As Object) As Boolean
+    On Error Resume Next
+    Dim names As Variant
+    IsFirstSheet = True
+    names = swModel.GetSheetNames
+    If IsArray(names) Then IsFirstSheet = (CStr(names(LBound(names))) = swModel.GetCurrentSheet.GetName)
+End Function
+
+' The parts list of an assembly drawing, as in EasyPDM for FreeCAD: number, drawing number
+' (with the name's translations under it) and quantity of each direct component, numbered by
+' its position in the assembly's structure in EasyPDM. 90 mm wide against the frame's right
+' edge, on the processes table (bottom at procTop), header at the bottom and row 1 above it.
+' When a column would reach the revisions table (firstTop) or the frame, the rest continues
+' in a column to its left, with its own header and the same bottom line.
+Private Sub BuildPartsList(ByVal swModel As Object, ByVal tb As Object, ByVal w As Double, ByVal h As Double, ByVal procTop As Double, ByVal firstTop As Double)
+    On Error Resume Next
+    Dim bom As Object, n As Long, i As Long
+    Set bom = JsonChild(tb, "bom")
+    If bom Is Nothing Then Exit Sub
+    n = bom.Count
+    If n = 0 Then Exit Sub
+    If Not IsFirstSheet(swModel) Then
+        LogLine "Parts list: not the first sheet -- left off."
+        Exit Sub
+    End If
+
+    Dim labels As Object
+    Set labels = JsonChild(tb, "labels")
+    Dim cNo() As String, cName() As String, cQty() As String, est() As Double
+    ReDim cNo(1 To n): ReDim cName(1 To n): ReDim cQty(1 To n): ReDim est(1 To n)
+    Dim row As Object, trs As Object, tr As Object, cell As String
+    For i = 1 To n
+        Set row = bom(i)
+        cNo(i) = JsonGetString(row, "position", CStr(i))
+        cQty(i) = JsonGetString(row, "quantity", "")
+        cell = WrapForCell(JsonGetString(row, "drawingNumber", JsonGetString(row, "name", "")), 63, 2.6)
+        Set trs = JsonChild(row, "nameTranslations")
+        If Not trs Is Nothing Then
+            For Each tr In trs
+                If JsonGetString(tr, "name", "") <> "" Then
+                    cell = AddLines(cell, WrapForCell(JsonGetString(tr, "languageCode", "") & ": " & JsonGetString(tr, "name", ""), 63, 2.6))
+                End If
+            Next tr
+        End If
+        cName(i) = cell
+        est(i) = EstRowHeight(CellLines(cell))
+    Next i
+
+    Dim first As Long, last As Long, col As Long, used As Double, room As Double
+    Dim t As Object, m As Long, j As Long, k As Long, title As String
+    first = 1
+    col = 0
+    Do While first <= n
+        If col = 0 Then room = firstTop - procTop - EstRowHeight(1) Else room = (h - 0.015) - procTop - EstRowHeight(1)
+        used = 0
+        last = first
+        Do While last <= n
+            If last > first And used + est(last) > room Then Exit Do
+            used = used + est(last)
+            last = last + 1
+        Loop
+        last = last - 1
+        m = last - first + 1
+        title = "EasyPDM parts list"
+        If col > 0 Then title = title & " " & (col + 1)
+        Set t = NewSheetTable(swModel, w - 0.01 - col * 0.09, procTop, SW_TABLE_ANCHOR_BOTTOM_RIGHT, m + 1, 3, title)
+        If t Is Nothing Then Exit Sub
+        t.SetColumnWidth 0, 0.01, 0
+        t.SetColumnWidth 1, 0.066, 0
+        t.SetColumnWidth 2, 0.014, 0
+        ' Rows top to bottom: the column's last item down to its first, then the header.
+        For j = 0 To m - 1
+            k = last - j
+            SetCell t, j, 0, cNo(k)
+            SetCell t, j, 1, cName(k)
+            SetCell t, j, 2, cQty(k)
+        Next j
+        SetCell t, m, 0, LabelOf(labels, "bomNo", "No."), True
+        SetCell t, m, 1, LabelOf(labels, "bomDrawingNumber", "Drawing number"), True
+        SetCell t, m, 2, LabelOf(labels, "bomQuantity", "Qty"), True
+        LogLine "Parts list: column " & (col + 1) & " with items " & first & ".." & last
+        first = last + 1
+        col = col + 1
+        If col > 5 Then
+            LogLine "Parts list: more than six columns -- the rest left off."
+            Exit Do
+        End If
+    Loop
+    If Err.Number <> 0 Then LogLine "Parts list: error " & Err.Number & ": " & Err.Description
+End Sub
+
+' Sets every balloon on the drawing to the parts list number of the component it is attached
+' to, so the balloons, the list and the structure in EasyPDM say the same. The balloon's
+' attached entity leads to its component, that to the assembly's direct component it belongs
+' to, and that to its EasyPDM item through the EasyPDM_ItemId property. A balloon whose
+' component is not on the list keeps its text.
+Sub NumberBalloons(ByVal swModel As Object, ByVal tb As Object)
+    On Error Resume Next
+    Dim bom As Object, row As Object, byItem As Object
+    Set bom = JsonChild(tb, "bom")
+    If bom Is Nothing Then Exit Sub
+    If bom.Count = 0 Then Exit Sub
+    Set byItem = CreateObject("Scripting.Dictionary")
+    For Each row In bom
+        byItem(LCase(JsonGetString(row, "itemId", ""))) = JsonGetString(row, "position", "")
+    Next row
+
+    Dim sheets As Variant, views As Variant, s As Long, v As Long
+    Dim note As Object, ann As Object, ents As Variant, e As Long, comp As Object, parent As Object
+    Dim itemId As String, num As String, done As Long, skipped As Long
+    sheets = swModel.GetViews
+    If Not IsArray(sheets) Then Exit Sub
+    For s = LBound(sheets) To UBound(sheets)
+        views = sheets(s)
+        If IsArray(views) Then
+            ' Element 0 is the sheet itself; its own notes are not attached to a model.
+            For v = LBound(views) + 1 To UBound(views)
+                Set note = views(v).GetFirstNote
+                Do While Not note Is Nothing
+                    If note.IsBomBalloon Then
+                        num = ""
+                        Set ann = note.GetAnnotation
+                        ents = ann.GetAttachedEntities3
+                        If IsArray(ents) Then
+                            For e = LBound(ents) To UBound(ents)
+                                Set comp = Nothing
+                                Set comp = ents(e).GetComponent
+                                If Not comp Is Nothing Then
+                                    Do
+                                        Set parent = Nothing
+                                        Set parent = comp.GetParent
+                                        If parent Is Nothing Then Exit Do
+                                        Set comp = parent
+                                    Loop
+                                    itemId = LCase(GetLinkedItemIdOn(comp.GetModelDoc2))
+                                    If byItem.Exists(itemId) Then num = byItem(itemId)
+                                End If
+                                If num <> "" Then Exit For
+                            Next e
+                        End If
+                        Err.Clear
+                        If num <> "" Then
+                            If Not note.SetBomBalloonText(SW_BALLOON_TEXT_CUSTOM, num, SW_BALLOON_TEXT_CUSTOM, "") Then note.SetText num
+                            If Err.Number <> 0 Then LogLine "Balloons: setting " & num & " failed (" & Err.Description & ")"
+                            Err.Clear
+                            done = done + 1
+                        Else
+                            skipped = skipped + 1
+                        End If
+                    End If
+                    Set note = note.GetNext
+                Loop
+            Next v
+        End If
+    Next s
+    LogLine "Balloons: numbered from the parts list " & done & ", left as they were " & skipped
+End Sub
+
 Sub BuildSheetTables(ByVal swModel As Object, ByVal tb As Object)
     On Error Resume Next
     Dim sheet As Object, w As Double, h As Double
@@ -2901,12 +3099,16 @@ Sub BuildSheetTables(ByVal swModel As Object, ByVal tb As Object)
     ' --- processes: rows top to bottom are process N .. 1, then the header ---
     Dim procs As Object, n As Long, t As Object, r As Long, k As Long, p As Object
     Dim trs As Object, tr As Object, names As String, descs As String, line As String
+    Dim procTop As Double, procEst As Double, firstTop As Double, revEst As Double
+    procTop = 0.054
+    firstTop = h - 0.015
     Set procs = JsonChild(tb, "processes")
     If Not procs Is Nothing Then n = procs.Count
     If n > 0 Then
         ' Anchor type 3 = bottom-left (swBOMConfigurationAnchor_BottomLeft).
         Set t = NewSheetTable(swModel, w - 0.19, 0.054, 3, n + 1, 3, "EasyPDM processes")
         If Not t Is Nothing Then
+            procEst = EstRowHeight(1)
             t.SetColumnWidth 0, 0.01, 0
             t.SetColumnWidth 1, 0.06, 0
             t.SetColumnWidth 2, 0.11, 0
@@ -2929,6 +3131,7 @@ Sub BuildSheetTables(ByVal swModel As Object, ByVal tb As Object)
                     Next tr
                 End If
                 names = AddLines(names, WrapForCell(line, 57, 2.6))
+                If CellLines(names) > CellLines(descs) Then procEst = procEst + EstRowHeight(CellLines(names)) Else procEst = procEst + EstRowHeight(CellLines(descs))
                 SetCell t, r, 0, CStr(k)
                 SetCell t, r, 1, names
                 SetCell t, r, 2, descs
@@ -2936,6 +3139,7 @@ Sub BuildSheetTables(ByVal swModel As Object, ByVal tb As Object)
             SetCell t, n, 0, LabelOf(labels, "processNo", "No."), True
             SetCell t, n, 1, LabelOf(labels, "process", "Process"), True
             SetCell t, n, 2, LabelOf(labels, "processDescription", "Description"), True
+            procTop = 0.054 + TableHeight(t, procEst)
         End If
     End If
 
@@ -2962,9 +3166,14 @@ Sub BuildSheetTables(ByVal swModel As Object, ByVal tb As Object)
                 SetCell t, r, 1, Left(JsonGetString(rv, "at", ""), 10)
                 SetCell t, r, 2, WrapForCell(JsonGetString(rv, "description", ""), 97, 2.6)
                 SetCell t, r, 3, WrapForCell(JsonGetString(rv, "by", ""), 23, 2.6)
+                revEst = revEst + EstRowHeight(CellLines(WrapForCell(JsonGetString(rv, "description", ""), 97, 2.6)))
             Next r
+            firstTop = h - 0.01 - TableHeight(t, revEst + EstRowHeight(1)) - 0.005
         End If
     End If
+
+    ' --- parts list of an assembly, on the processes table ---
+    BuildPartsList swModel, tb, w, h, procTop, firstTop
 
     ' --- logo in the 17 mm square at the right end of the NAME row ---
     ' hasLogo is a JSON boolean; read it as one -- CStr(True) is "Prawda" on a Polish Windows.
@@ -3055,6 +3264,7 @@ Sub FillDrawingSheet(ByVal swModel As Object, ByVal itemId As String)
     SetDwgProp mgr, "pdm_name_translations", joined
 
     BuildSheetTables swModel, tb
+    NumberBalloons swModel, tb
     swModel.ForceRebuild3 False
     LogLine "Title block: filled from EasyPDM for item " & itemId & "."
     Exit Sub
