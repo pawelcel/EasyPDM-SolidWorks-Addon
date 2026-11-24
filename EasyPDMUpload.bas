@@ -3048,7 +3048,7 @@ Sub NumberBalloons(ByVal swModel As Object, ByVal tb As Object)
 
     Dim sheets As Variant, views As Variant, s As Long, v As Long
     Dim note As Object, ann As Object, ents As Variant, e As Long, comp As Object, parent As Object
-    Dim itemId As String, num As String, done As Long, skipped As Long
+    Dim itemId As String, num As String, why As String, done As Long, skipped As Long
     sheets = swModel.GetViews
     If Not IsArray(sheets) Then Exit Sub
     For s = LBound(sheets) To UBound(sheets)
@@ -3060,13 +3060,19 @@ Sub NumberBalloons(ByVal swModel As Object, ByVal tb As Object)
                 Do While Not note Is Nothing
                     If note.IsBomBalloon Then
                         num = ""
+                        why = ""
                         Set ann = note.GetAnnotation
+                        ents = Empty
                         ents = ann.GetAttachedEntities3
-                        If IsArray(ents) Then
+                        If Not IsArray(ents) Then
+                            why = "no attached entities"
+                        Else
                             For e = LBound(ents) To UBound(ents)
                                 Set comp = Nothing
                                 Set comp = ents(e).GetComponent
-                                If Not comp Is Nothing Then
+                                If comp Is Nothing Then
+                                    why = why & " entity " & e & ": no component (" & TypeName(ents(e)) & ");"
+                                Else
                                     Do
                                         Set parent = Nothing
                                         Set parent = comp.GetParent
@@ -3074,11 +3080,16 @@ Sub NumberBalloons(ByVal swModel As Object, ByVal tb As Object)
                                         Set comp = parent
                                     Loop
                                     itemId = LCase(GetLinkedItemIdOn(comp.GetModelDoc2))
-                                    If byItem.Exists(itemId) Then num = byItem(itemId)
+                                    If byItem.Exists(itemId) Then
+                                        num = byItem(itemId)
+                                    Else
+                                        why = why & " component """ & comp.Name2 & """ item id """ & itemId & """ not on the list;"
+                                    End If
                                 End If
                                 If num <> "" Then Exit For
                             Next e
                         End If
+                        LogLine "Balloon """ & note.GetText & """ in view """ & views(v).Name & """: " & IIf(num <> "", "-> " & num, "kept (" & Trim(why) & ")")
                         Err.Clear
                         If num <> "" Then
                             If Not note.SetBomBalloonText(SW_BALLOON_TEXT_CUSTOM, num, SW_BALLOON_TEXT_CUSTOM, "") Then note.SetText num
