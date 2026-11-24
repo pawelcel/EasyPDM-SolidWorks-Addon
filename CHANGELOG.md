@@ -8,7 +8,7 @@ and the drawing sheet were released with EasyPDM itself; see the
 
 ### Added
 - **Parts list on assembly drawings.** On the first sheet of an assembly's drawing, Upload builds a parts list above the processes table, as EasyPDM for FreeCAD 0.9.9 does: number, drawing number (with the name's translations under it), manufacturer / standard, order numbers and quantity of each direct component, numbered by its position in the assembly's structure in EasyPDM, 156 mm wide against the frame's right edge, continued in a column to the left when it would reach the revisions table or the top of the frame. Needs EasyPDM 0.9.4 or later.
-- **Balloons numbered from the parts list.** Every balloon on the drawing gets the number of the component it is attached to (through the component's EasyPDM item), so the balloons, the list and the structure in EasyPDM agree; a balloon on something not on the list keeps its text.
+- **Balloons numbered from the parts list.** Every balloon on the drawing gets the number of the component it is attached to (through the component's EasyPDM item), so the balloons, the list and the structure in EasyPDM agree; a balloon on something not on the list keeps its text. SolidWorks BOM balloons, which always show SolidWorks' own item number, are replaced by text balloons at the same place on the same edge; the next Upload finds those and only changes their number.
 
 ## [0.9.0]
 

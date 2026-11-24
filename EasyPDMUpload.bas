@@ -159,11 +159,14 @@ Private Const SW_DOC_ASSEMBLY As Long = 2                   ' swDocumentTypes_e.
 Private Const SW_DOC_DRAWING As Long = 3                    ' swDocumentTypes_e.swDocDRAWING
 Private Const SW_BALLOON_TEXT_CUSTOM As Long = 0            ' swBalloonTextContent_e.swBalloonTextCustom
 Private Const SW_TABLE_ANCHOR_BOTTOM_RIGHT As Long = 4      ' swBOMConfigurationAnchorType_e.swBOMConfigurationAnchor_BottomRight
+Private Const SW_BALLOON_CIRCULAR As Long = 1               ' swBalloonStyle_e.swBS_Circular
+Private Const SW_BALLOON_FIT_TIGHTEST As Long = 0           ' swBalloonFit_e.swBF_Tightest
+Private Const EASYPDM_BALLOON As String = "EasyPDM balloon"  ' name prefix of the balloons the macro puts in
 Private Const SW_CUSTOM_INFO_TEXT As Long = 30              ' swCustomInfoType_e.swCustomInfoText
 Private Const SW_CUSTOM_PROPERTY_REPLACE As Long = 2        ' swCustomPropertyAddOption_e.swCustomPropertyReplaceValue
 ' Bumped by hand on every change and written into the first log line, so a log shows at once
 ' whether the latest macro was imported or an older copy ran (happened twice in testing).
-Private Const MACRO_REVISION As String = "2026-11-17.4"
+Private Const MACRO_REVISION As String = "2026-11-24.1"
 Private Const SW_SAVE_AS_SILENT As Long = 1                 ' swSaveAsOptions_e.swSaveAsOptions_Silent -- UNVERIFIED against a
                                                              ' live SolidWorks install, confirm on first real test (see
                                                              ' UploadStepAttachment).
@@ -3035,6 +3038,12 @@ End Sub
 ' attached entity leads to its component, that to the assembly's direct component it belongs
 ' to, and that to its EasyPDM item through the EasyPDM_ItemId property. A balloon whose
 ' component is not on the list keeps its text.
+'
+' A SolidWorks BOM balloon shows SolidWorks' own item number: on SolidWorks 2024 the custom
+' text set through SetBomBalloonText did not show (tested 2026-11-24, the log said both were
+' set). So a BOM balloon whose text does not read back as the number is replaced by a note
+' with a circular balloon border and a leader on the same entity, at the same place, named
+' "EasyPDM balloon ..." so a later run finds it again and only changes its text.
 Sub NumberBalloons(ByVal swModel As Object, ByVal tb As Object)
     On Error Resume Next
     Dim bom As Object, row As Object, byItem As Object
@@ -3048,7 +3057,9 @@ Sub NumberBalloons(ByVal swModel As Object, ByVal tb As Object)
 
     Dim sheets As Variant, views As Variant, s As Long, v As Long
     Dim note As Object, ann As Object, ents As Variant, e As Long, comp As Object, parent As Object
+    Dim hit As Object, ours As Boolean
     Dim itemId As String, num As String, why As String, done As Long, skipped As Long
+    Dim replaceJobs As New Collection, job As Variant
     sheets = swModel.GetViews
     If Not IsArray(sheets) Then Exit Sub
     For s = LBound(sheets) To UBound(sheets)
@@ -3058,10 +3069,13 @@ Sub NumberBalloons(ByVal swModel As Object, ByVal tb As Object)
             For v = LBound(views) + 1 To UBound(views)
                 Set note = views(v).GetFirstNote
                 Do While Not note Is Nothing
-                    If note.IsBomBalloon Then
+                    Set ann = Nothing
+                    Set ann = note.GetAnnotation
+                    ours = (Left(ann.GetName, Len(EASYPDM_BALLOON)) = EASYPDM_BALLOON)
+                    If ours Or note.IsBomBalloon Then
                         num = ""
                         why = ""
-                        Set ann = note.GetAnnotation
+                        Set hit = Nothing
                         ents = Empty
                         ents = ann.GetAttachedEntities3
                         If Not IsArray(ents) Then
@@ -3082,6 +3096,7 @@ Sub NumberBalloons(ByVal swModel As Object, ByVal tb As Object)
                                     itemId = LCase(GetLinkedItemIdOn(comp.GetModelDoc2))
                                     If byItem.Exists(itemId) Then
                                         num = byItem(itemId)
+                                        Set hit = ents(e)
                                     Else
                                         why = why & " component """ & comp.Name2 & """ item id """ & itemId & """ not on the list;"
                                     End If
@@ -3089,24 +3104,85 @@ Sub NumberBalloons(ByVal swModel As Object, ByVal tb As Object)
                                 If num <> "" Then Exit For
                             Next e
                         End If
-                        LogLine "Balloon """ & note.GetText & """ in view """ & views(v).Name & """: " & IIf(num <> "", "-> " & num, "kept (" & Trim(why) & ")")
                         Err.Clear
-                        If num <> "" Then
-                            If Not note.SetBomBalloonText(SW_BALLOON_TEXT_CUSTOM, num, SW_BALLOON_TEXT_CUSTOM, "") Then note.SetText num
-                            If Err.Number <> 0 Then LogLine "Balloons: setting " & num & " failed (" & Err.Description & ")"
-                            Err.Clear
+                        If num = "" Then
+                            LogLine "Balloon """ & note.GetText & """ in view """ & views(v).Name & """: kept (" & Trim(why) & ")"
+                            skipped = skipped + 1
+                        ElseIf ours Then
+                            note.SetText num
+                            LogLine "Balloon """ & ann.GetName & """ in view """ & views(v).Name & """: -> " & num
                             done = done + 1
                         Else
-                            skipped = skipped + 1
+                            note.SetBomBalloonText SW_BALLOON_TEXT_CUSTOM, num, SW_BALLOON_TEXT_CUSTOM, ""
+                            Err.Clear
+                            If note.GetText = num Then
+                                LogLine "Balloon in view """ & views(v).Name & """: BOM balloon text set to " & num
+                                done = done + 1
+                            Else
+                                ' Replaced after the walk: deleting now would break GetNext.
+                                replaceJobs.Add Array(views(v), hit, ann, num, note.GetText)
+                            End If
                         End If
+                        Err.Clear
                     End If
                     Set note = note.GetNext
                 Loop
             Next v
         End If
     Next s
+
+    Dim k As Long
+    For Each job In replaceJobs
+        k = k + 1
+        If ReplaceBomBalloon(swModel, job(0), job(1), job(2), CStr(job(3)), k) Then
+            LogLine "Balloon """ & job(4) & """ in view """ & job(0).Name & """: replaced by a text balloon " & job(3)
+            done = done + 1
+        Else
+            skipped = skipped + 1
+        End If
+    Next job
+    swModel.ClearSelection2 True
+    swModel.GraphicsRedraw2
     LogLine "Balloons: numbered from the parts list " & done & ", left as they were " & skipped
 End Sub
+
+' Puts a text balloon (a note with a circular border) with a leader on the entity the BOM
+' balloon points at, moves it where the BOM balloon was and deletes that one. Selecting the
+' entity before InsertNote is what attaches the leader. Gives up (keeping the BOM balloon)
+' when the note cannot be made.
+Private Function ReplaceBomBalloon(ByVal swModel As Object, ByVal view As Object, ByVal hit As Object, ByVal oldAnn As Object, ByVal num As String, ByVal k As Long) As Boolean
+    On Error Resume Next
+    Dim pos As Variant, newNote As Object, newAnn As Object
+    pos = oldAnn.GetPosition
+    swModel.ClearSelection2 True
+    swModel.ActivateView view.Name
+    Err.Clear
+    If Not hit.Select4(False, Nothing) Then
+        LogLine "Balloons: could not select the entity of balloon " & num & " (" & Err.Description & ")"
+        Exit Function
+    End If
+    Set newNote = swModel.InsertNote(num)
+    If newNote Is Nothing Then
+        LogLine "Balloons: InsertNote failed for " & num & " (" & Err.Description & ")"
+        Exit Function
+    End If
+    newNote.SetBalloon SW_BALLOON_CIRCULAR, SW_BALLOON_FIT_TIGHTEST
+    Set newAnn = newNote.GetAnnotation
+    If IsArray(pos) Then newAnn.SetPosition2 pos(0), pos(1), pos(2)
+    If Not newAnn.SetName(EASYPDM_BALLOON & " " & Format(Now, "yymmddhhnnss") & "-" & k) Then
+        LogLine "Balloons: could not name the text balloon " & num & " -- a rerun will not find it"
+    End If
+    Err.Clear
+    swModel.ClearSelection2 True
+    If oldAnn.Select3(False, Nothing) Then
+        swModel.EditDelete
+    Else
+        LogLine "Balloons: could not delete the old BOM balloon of " & num & " (" & Err.Description & ")"
+    End If
+    swModel.ClearSelection2 True
+    Err.Clear
+    ReplaceBomBalloon = True
+End Function
 
 Sub BuildSheetTables(ByVal swModel As Object, ByVal tb As Object)
     On Error Resume Next
