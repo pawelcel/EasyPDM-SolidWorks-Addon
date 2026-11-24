@@ -163,7 +163,7 @@ Private Const SW_CUSTOM_INFO_TEXT As Long = 30              ' swCustomInfoType_e
 Private Const SW_CUSTOM_PROPERTY_REPLACE As Long = 2        ' swCustomPropertyAddOption_e.swCustomPropertyReplaceValue
 ' Bumped by hand on every change and written into the first log line, so a log shows at once
 ' whether the latest macro was imported or an older copy ran (happened twice in testing).
-Private Const MACRO_REVISION As String = "2026-11-24.2"
+Private Const MACRO_REVISION As String = "2026-11-24.3"
 Private Const SW_SAVE_AS_SILENT As Long = 1                 ' swSaveAsOptions_e.swSaveAsOptions_Silent -- UNVERIFIED against a
                                                              ' live SolidWorks install, confirm on first real test (see
                                                              ' UploadStepAttachment).
@@ -3111,7 +3111,7 @@ Sub NumberBalloons(ByVal swModel As Object, ByVal tb As Object)
         End If
     Next s
 
-    Dim was As String, edited As Object
+    Dim was As String, edited As Object, how As String
     For Each job In jobs
         Set note = job(0)
         Set ann = job(1)
@@ -3120,12 +3120,23 @@ Sub NumberBalloons(ByVal swModel As Object, ByVal tb As Object)
         Err.Clear
         swModel.ClearSelection2 True
         Set edited = Nothing
+        how = ""
         If ann.Select3(False, Nothing) Then
+            how = "Select3"
+        Else
+            ' The same balloon by name, the way a recorded macro selects it.
+            Err.Clear
+            If swModel.Extension.SelectByID2(ann.GetName & "@" & job(3), "NOTE", 0, 0, 0, False, 0, Nothing, 0) Then how = "SelectByID2"
+        End If
+        If how <> "" Then
             Set edited = swModel.Extension.EditBalloonProperties2(note.GetBalloonStyle, note.GetBalloonSize, _
                 SW_BALLOON_TEXT_CUSTOM, num, SW_BALLOON_TEXT_CUSTOM, "", 0, False, 0, "", 0)
         End If
-        If edited Is Nothing Then
-            LogLine "Balloon """ & was & """ in view """ & job(3) & """: could not be set to " & num & " (" & Err.Description & ")"
+        If how = "" Then
+            LogLine "Balloon """ & was & """ (" & ann.GetName & ") in view """ & job(3) & """: could not be selected (" & Err.Description & ")"
+            skipped = skipped + 1
+        ElseIf edited Is Nothing Then
+            LogLine "Balloon """ & was & """ in view """ & job(3) & """: selected (" & how & ", " & swModel.SelectionManager.GetSelectedObjectCount2(-1) & " selected) but EditBalloonProperties2 did not set " & num & " (" & Err.Description & ")"
             skipped = skipped + 1
         Else
             LogLine "Balloon """ & was & """ in view """ & job(3) & """: -> " & num
@@ -3318,8 +3329,11 @@ Sub FillDrawingSheet(ByVal swModel As Object, ByVal itemId As String)
     End If
     SetDwgProp mgr, "pdm_name_translations", joined
 
-    BuildSheetTables swModel, tb
+    ' Balloons before the tables and the logo: InsertSketchPicture may leave the drawing in a
+    ' state where a view's annotations cannot be selected, and the balloons are edited through
+    ' the selection (an upload with them after the logo failed on every balloon).
     NumberBalloons swModel, tb
+    BuildSheetTables swModel, tb
     swModel.ForceRebuild3 False
     LogLine "Title block: filled from EasyPDM for item " & itemId & "."
     Exit Sub
