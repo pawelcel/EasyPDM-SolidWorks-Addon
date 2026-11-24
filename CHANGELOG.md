@@ -6,6 +6,12 @@ and the drawing sheet were released with EasyPDM itself; see the
 
 ## [Unreleased]
 
+## [0.9.2]
+
+**In short:** the target folder of Download and Upload no longer nests a new subfolder on every run.
+
+Update: close SOLIDWORKS, unpack the new zip over the old folder and run `install.cmd` as administrator again.
+
 ### Fixed
 - **Nested target folders.** A target folder typed as a bare name (e.g. `test`) was taken relative to the current SolidWorks folder, which is the folder last downloaded into, so every Download or Upload added another level (`D:\Documents\test\test\test…`). Both macros now ask for a full path (`D:\…` or `\\server\…`) and no longer offer a relative one remembered by an older version. ([#1](https://github.com/pawelcel/EasyPDM-SolidWorks-Addon/issues/1))
 
