@@ -24,9 +24,9 @@ jobs:
             exit 1
           fi
       - name: Build the zip
-        # The compiled EasyPDMUpload.swp / EasyPDMDownload.swp are not in it: only a live
-        # SOLIDWORKS can write them. They are attached to the draft by hand, and the add-in
-        # needs them in its folder. The .bas sources go in so the folder is complete otherwise.
+        # The compiled EasyPDMUpload.swp / EasyPDMDownload.swp are not in it yet: only a live
+        # SOLIDWORKS can write them. They are added into this zip on the draft by hand before
+        # it is published, so one download holds everything the add-in's folder needs.
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           dotnet build Addin -c Release -p:Version="$VERSION"

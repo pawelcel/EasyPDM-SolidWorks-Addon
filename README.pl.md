@@ -18,7 +18,7 @@ EasyPDM, w `EasyPDM.SolidWorks/`; przeniesiono je razem z historią.
 ![Część z panelem dokumentu EasyPDM w Task Pane](docs/images/panel-part.png)
 
 **Instalacja dodatku:** pobierz najnowsze [wydanie](https://github.com/pawelcel/EasyPDM-SolidWorks-Addon/releases)
-(zip i oba makra `.swp`), rozpakuj je do jednego stałego folderu, uruchom `install.cmd` jako
+(jeden zip z add-inem i obydwoma skompilowanymi makrami `.swp`), rozpakuj go do stałego folderu, uruchom `install.cmd` jako
 administrator i włącz SOLIDWORKS — szczegóły w [`Addin/README.md`](Addin/README.md) (po angielsku).
 **Krok po kroku, ze zrzutami ekranu: [wiki](https://github.com/pawelcel/EasyPDM-SolidWorks-Addon/wiki)** (po angielsku).
 

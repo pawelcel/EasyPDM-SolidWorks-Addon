@@ -33,13 +33,11 @@ it (`EasyPDM_ContentVersion`); files uploaded by older macros are recognised by 
 ## Installing
 
 1. Unpack `EasyPDM_SolidWorks_Addin_vX.zip` into a folder that stays (for example
-   `C:\Program Files\EasyPDM\SolidWorks`).
-2. Put `EasyPDMUpload.swp` and `EasyPDMDownload.swp` from the same release into that folder
-   (the `.swp` files are compiled from the `.bas` macros on a live SOLIDWORKS and added to the
-   release by hand).
-3. Right-click `install.cmd` → **Run as administrator**. It clears the "downloaded from the
+   `C:\Program Files\EasyPDM\SolidWorks`). It holds the add-in, both compiled macros
+   (`EasyPDMUpload.swp`, `EasyPDMDownload.swp`) and their `.bas` sources.
+2. Right-click `install.cmd` → **Run as administrator**. It clears the "downloaded from the
    internet" mark and registers the add-in (`RegAsm /codebase`).
-4. Start SOLIDWORKS. The add-in loads at start-up for the user who installed it; others tick
+3. Start SOLIDWORKS. The add-in loads at start-up for the user who installed it; others tick
    **EasyPDM** under **Tools → Add-Ins**.
 
 `uninstall.cmd` (as administrator) removes it.

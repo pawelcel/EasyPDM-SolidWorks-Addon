@@ -39,5 +39,8 @@ the add-in calls can be checked against a local EasyPDM server.
   release, which renders single newlines as line breaks.
 - A release is a `vX.Y.Z` tag equal to `<Version>` in `Addin/EasyPDM.SolidWorks.Addin.csproj`
   (the workflow refuses otherwise). It opens a draft with `EasyPDM_SolidWorks_Addin_vX.Y.Z.zip`.
-  The compiled `EasyPDMUpload.swp` / `EasyPDMDownload.swp` need a live SOLIDWORKS and are
-  attached by hand; publishing stays manual.
+  The compiled `EasyPDMUpload.swp` / `EasyPDMDownload.swp` need a live SOLIDWORKS: the user
+  compiles them, and they go **into that zip** (under `EasyPDM-SolidWorks-Addon/`, replacing
+  the draft's asset), not as separate assets: one download holds everything. Check a new
+  `.swp` before adding it (an empty one has happened: ~22 KB, no procedure names in
+  `strings`). Publishing stays manual.
