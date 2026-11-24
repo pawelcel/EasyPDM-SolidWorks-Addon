@@ -480,10 +480,18 @@ speichert und ihr PDF exportiert — die Schriftfelddaten aus EasyPDM und:
 - baut eine **Bearbeitungstabelle** über dem Schriftfeld (an dessen Oberkante verankert, wächst
   nach oben, Kopfzeile in der letzten Zeile) und eine **Revisionstabelle** rechts oben (B, C, …;
   Revision A wird nicht aufgeführt) — als allgemeine SolidWorks-Tabellen;
-- setzt das **Firmenlogo** in das Quadrat am rechten Ende der Zeile BENENNUNG.
+- setzt das **Firmenlogo** in das Quadrat am rechten Ende der Zeile BENENNUNG;
+- baut auf einer **Baugruppenzeichnung** (nur erstes Blatt) eine **Stückliste** über der
+  Bearbeitungstabelle: Position, Zeichnungsnummer, Hersteller / Norm, Bestellnummer und Menge
+  jeder direkten Komponente, nummeriert nach ihrer Position in der Baugruppenstruktur in
+  EasyPDM, und setzt jede **Positionsnummer** (Ballon) auf die Nummer der Komponente, auf die
+  sie zeigt. Reihenfolge in EasyPDM ändern und erneut senden: Liste und Ballons folgen.
+  Erfordert EasyPDM 0.9.4 oder neuer.
+
+![Eine Baugruppenzeichnung: Stückliste über dem Schriftfeld, Ballons danach nummeriert](docs/images/drawing-parts-list.png)
 
 Ein erneuter Upload ersetzt nur seine eigenen Tabellen und das Logo — Features namens „EasyPDM
-processes“, „EasyPDM revisions“ und „EasyPDM logo“ im FeatureManager; selbst eingefügte
-Tabellen und Bilder bleiben. (Benennen Sie diese drei nicht um.) Eine Zeichnung mit einem anderen Blattformat bleibt unverändert.
+processes“, „EasyPDM revisions“, „EasyPDM parts list“ und „EasyPDM logo“ im FeatureManager; selbst eingefügte
+Tabellen und Bilder bleiben. (Benennen Sie diese nicht um.) Eine Zeichnung mit einem anderen Blattformat bleibt unverändert.
 Das Senden eines Teils oder einer Baugruppe exportiert nie ein PDF — das PDF des Elements ist
 seine Zeichnung.

@@ -436,9 +436,16 @@ pobiera z EasyPDM dane tabelki i:
 - buduje **tabelę obróbek** nad tabelką (zakotwiczoną do jej górnej krawędzi, rosnącą w górę,
   z nagłówkiem w ostatnim wierszu) i **tabelę rewizji** w prawym górnym rogu (B, C, …; rewizja A
   nie jest wypisywana) — jako tabele ogólne SolidWorks;
-- wstawia **logo firmy** w kwadrat po prawej stronie wiersza NAZWA.
+- wstawia **logo firmy** w kwadrat po prawej stronie wiersza NAZWA;
+- na rysunku **złożenia** (tylko pierwszy arkusz) buduje **listę części** nad tabelą obróbek:
+  numer, numer rysunku, producent / norma, numer zamówieniowy i ilość każdego bezpośredniego
+  komponentu, numerowane pozycją w strukturze złożenia w EasyPDM, i ustawia każdy **balon** na
+  numer komponentu, który wskazuje. Zmień kolejność w EasyPDM i wyślij ponownie: lista i balony
+  pójdą za nią. Wymaga EasyPDM 0.9.4 lub nowszego.
+
+![Rysunek złożenia: lista części nad tabelką, balony numerowane według niej](docs/images/drawing-parts-list.png)
 
 Ponowny Upload wymienia tylko swoje tabele i logo — operacje o nazwach „EasyPDM processes”,
-„EasyPDM revisions” i „EasyPDM logo” w drzewie FeatureManager; tabele i obrazy dodane przez
-Ciebie zostają. (Nie zmieniaj nazw tych trzech operacji.) Rysunek z innym formatem arkusza zostaje bez zmian. Wysyłka części lub złożenia nigdy
+„EasyPDM revisions”, „EasyPDM parts list” i „EasyPDM logo” w drzewie FeatureManager; tabele i obrazy dodane przez
+Ciebie zostają. (Nie zmieniaj nazw tych operacji.) Rysunek z innym formatem arkusza zostaje bez zmian. Wysyłka części lub złożenia nigdy
 nie eksportuje PDF — PDF elementu to jego rysunek.

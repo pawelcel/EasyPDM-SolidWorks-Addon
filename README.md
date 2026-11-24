@@ -434,11 +434,18 @@ exports its PDF — reads the item's title block data from EasyPDM and:
 - builds a **processes table** above the title block (anchored to its top edge, growing
   upward, header in the last row) and a **revision table** in the top-right corner (B, C, …;
   revision A is not listed) — SolidWorks general tables;
-- puts the **company logo** in the square at the right end of the NAME row.
+- puts the **company logo** in the square at the right end of the NAME row;
+- on an **assembly** drawing (first sheet only) builds a **parts list** above the processes
+  table: number, drawing number, manufacturer / standard, order number and quantity of each
+  direct component, numbered by its position in the assembly's structure in EasyPDM, and
+  sets every **balloon** to the number of the component it points at. Change the order in
+  EasyPDM and upload again: the list and the balloons follow. Needs EasyPDM 0.9.4 or later.
+
+![An assembly drawing: the parts list above the title block, balloons numbered from it](docs/images/drawing-parts-list.png)
 
 Running Upload again replaces only its own tables and logo — features named "EasyPDM
-processes", "EasyPDM revisions" and "EasyPDM logo" in the FeatureManager tree; tables and
-pictures you placed yourself stay. (Don't rename those three.) A drawing with any other sheet format is left alone. A part or
+processes", "EasyPDM revisions", "EasyPDM parts list" and "EasyPDM logo" in the FeatureManager tree; tables and
+pictures you placed yourself stay. (Don't rename them.) A drawing with any other sheet format is left alone. A part or
 assembly upload never exports a PDF — the item's PDF is its drawing.
 
 DRAWN BY is left empty: it is whoever sends the revision for review, not whoever exports the
