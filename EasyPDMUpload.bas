@@ -163,7 +163,7 @@ Private Const SW_CUSTOM_INFO_TEXT As Long = 30              ' swCustomInfoType_e
 Private Const SW_CUSTOM_PROPERTY_REPLACE As Long = 2        ' swCustomPropertyAddOption_e.swCustomPropertyReplaceValue
 ' Bumped by hand on every change and written into the first log line, so a log shows at once
 ' whether the latest macro was imported or an older copy ran (happened twice in testing).
-Private Const MACRO_REVISION As String = "2026-11-24.3"
+Private Const MACRO_REVISION As String = "2026-11-24.4"
 Private Const SW_SAVE_AS_SILENT As Long = 1                 ' swSaveAsOptions_e.swSaveAsOptions_Silent -- UNVERIFIED against a
                                                              ' live SolidWorks install, confirm on first real test (see
                                                              ' UploadStepAttachment).
@@ -372,6 +372,7 @@ Private Function T_PL(ByVal key As String) As String
         Case "StaleChildrenConfirmPrefix": T_PL = "Podelementow tego elementu: "
         Case "StaleChildrenConfirmSuffix": T_PL = " istnieje w PDM, ale nie ma ich juz w lokalnej strukturze zlozenia (usuniete z drzewa od poprzedniej wysylki). Usunac te powiazania z PDM? (Same elementy NIE zostana skasowane, tylko ich podpiecie pod to zlozenie.)"
         Case "PromptRevisionComment": T_PL = "Komentarz do nowej rewizji (opcjonalnie):"
+        Case "FolderNotAbsolute": T_PL = "Podaj pelna sciezke folderu, np. D:\Dokumenty\Projekt. Sama nazwa folderu bylaby liczona od biezacego folderu SolidWorks i przy kazdym uzyciu powstawalby kolejny podfolder."
         Case "PromptTargetFolder": T_PL = "Folder docelowy na lokalne kopie (nazwane pod numerem PDM):"
         Case "TitleTargetFolder": T_PL = "Folder docelowy"
         Case "AssemblyDetectedTitle": T_PL = "Wykryto zlozenie"
@@ -457,6 +458,7 @@ Private Function T_EN(ByVal key As String) As String
         Case "StaleChildrenConfirmPrefix": T_EN = "Sub-item(s) of this item: "
         Case "StaleChildrenConfirmSuffix": T_EN = " exist in PDM, but are no longer in the local assembly structure (removed from the tree since the last upload). Remove these links from PDM? (The items themselves will NOT be deleted, only their attachment under this assembly.)"
         Case "PromptRevisionComment": T_EN = "New revision comment (optional):"
+        Case "FolderNotAbsolute": T_EN = "Enter the full path of the folder, e.g. D:\Documents\Project. A bare folder name would be taken from the current SolidWorks folder, adding another subfolder every time."
         Case "PromptTargetFolder": T_EN = "Target folder for local copies (named under the PDM number):"
         Case "TitleTargetFolder": T_EN = "Target folder"
         Case "AssemblyDetectedTitle": T_EN = "Assembly detected"
@@ -542,6 +544,7 @@ Private Function T_DE(ByVal key As String) As String
         Case "StaleChildrenConfirmPrefix": T_DE = "Unterelement(e) dieses Elements: "
         Case "StaleChildrenConfirmSuffix": T_DE = " existieren im PDM, sind aber nicht mehr in der lokalen Baugruppenstruktur (seit dem letzten Hochladen aus dem Baum entfernt). Diese Verknuepfungen aus dem PDM entfernen? (Die Elemente selbst werden NICHT geloescht, nur ihre Zuordnung zu dieser Baugruppe.)"
         Case "PromptRevisionComment": T_DE = "Kommentar zur neuen Revision (optional):"
+        Case "FolderNotAbsolute": T_DE = "Bitte den vollstaendigen Pfad des Ordners angeben, z. B. D:\Dokumente\Projekt. Ein blosser Ordnername wuerde vom aktuellen SolidWorks-Ordner aus gerechnet und bei jeder Verwendung einen weiteren Unterordner anlegen."
         Case "PromptTargetFolder": T_DE = "Zielordner fuer lokale Kopien (benannt nach der PDM-Nummer):"
         Case "TitleTargetFolder": T_DE = "Zielordner"
         Case "AssemblyDetectedTitle": T_DE = "Baugruppe erkannt"
@@ -661,8 +664,37 @@ End Sub
 ' Same registry key as the download folder in EasyPDMDownload.bas -- deliberately shared,
 ' so uploaded (locally re-saved under the PDM name) and downloaded files land in the same
 ' place by default.
+' A folder typed without a drive or UNC root (e.g. "test") is relative to the current
+' directory, which SolidWorks moves to the folder of the last opened document -- the folder
+' just downloaded into. Stored as typed, the next default "test" then meant one level deeper,
+' and each run nested another "test" (GitHub issue #1). So only absolute paths are accepted
+' and remembered, and a relative one stored by an older macro is not offered again.
 Function GetDownloadFolder() As String
     GetDownloadFolder = GetSetting(APP_SETTINGS_NAME, SETTINGS_SECTION, "DownloadFolder", "")
+    If Not IsAbsoluteFolder(GetDownloadFolder) Then GetDownloadFolder = ""
+End Function
+
+Function IsAbsoluteFolder(ByVal path As String) As Boolean
+    If Len(path) >= 3 And Mid(path, 2, 2) = ":\" And UCase(Left(path, 1)) Like "[A-Z]" Then
+        IsAbsoluteFolder = True
+    ElseIf Left(path, 2) = "\\" And Len(path) > 2 Then
+        IsAbsoluteFolder = True
+    End If
+End Function
+
+' Asks for the target folder until an absolute path is given; "" when cancelled. The trailing
+' backslash is dropped after the check, so "D:\" is accepted (and stored as "D:", as before).
+Function AskTargetFolder(ByVal prompt As String, ByVal title As String) As String
+    Dim answer As String
+    answer = GetDownloadFolder()
+    Do
+        answer = Trim(InputBox(prompt, title, answer))
+        If answer = "" Then Exit Function
+        If IsAbsoluteFolder(answer) Then Exit Do
+        MsgBoxFront T("FolderNotAbsolute"), vbExclamation, T("AppTitle")
+    Loop
+    If Right(answer, 1) = "\" Then answer = Left(answer, Len(answer) - 1)
+    AskTargetFolder = answer
 End Function
 
 Sub SetDownloadFolder(ByVal folder As String)
@@ -3366,7 +3398,17 @@ Sub UploadDrawingToItem(ByVal swModel As Object, ByVal filePath As String, ByVal
 
     On Error GoTo Failed
     Dim uploadOk As Boolean
-    uploadOk = RenameAndUpload(swModel, filePath, itemId, itemNumber, name, revision, GetDownloadFolder(), "drawing")
+    ' The remembered folder, else the drawing's own (none remembered, or only a relative one
+    ' from an older macro -- see GetDownloadFolder), else ask.
+    Dim dwgFolder As String
+    dwgFolder = GetDownloadFolder()
+    If dwgFolder = "" And InStrRev(filePath, "\") > 0 Then dwgFolder = Left(filePath, InStrRev(filePath, "\") - 1)
+    If Not IsAbsoluteFolder(dwgFolder & "\") Then dwgFolder = AskTargetFolder(T("PromptTargetFolder"), T("TitleTargetFolder"))
+    If dwgFolder = "" Then
+        LogLine "Drawing upload: no target folder -- done."
+        Exit Sub
+    End If
+    uploadOk = RenameAndUpload(swModel, filePath, itemId, itemNumber, name, revision, dwgFolder, "drawing")
     If uploadOk And exportPdf Then
         UploadPdfAttachment swModel, itemId, itemNumber, name, revision
     End If
@@ -4911,12 +4953,11 @@ Function UploadPartOrAssemblyDoc(ByVal swModel As Object, ByVal filePath As Stri
     ' purpose, so uploaded and downloaded files land together by default, same as the
     ' FreeCAD macros.
     Dim targetFolder As String
-    targetFolder = Trim(InputBox(T("PromptTargetFolder"), T("TitleTargetFolder"), GetDownloadFolder()))
+    targetFolder = AskTargetFolder(T("PromptTargetFolder"), T("TitleTargetFolder"))
     If targetFolder = "" Then
         LogLine "Target folder prompt cancelled -- done."
         Exit Function
     End If
-    If Right(targetFolder, 1) = "\" Then targetFolder = Left(targetFolder, Len(targetFolder) - 1)
     EnsureDirectory targetFolder
     SetDownloadFolder targetFolder
 

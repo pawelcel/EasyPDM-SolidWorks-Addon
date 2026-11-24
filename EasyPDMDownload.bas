@@ -241,6 +241,7 @@ Private Function T_PL(ByVal key As String) As String
         Case "LoggedOutMessage": T_PL = "Wylogowano z EasyPDM."
         Case "CancelledNothingDownloaded": T_PL = "Anulowano -- nic nie zostalo pobrane."
         Case "SelectedItemLoadFailed": T_PL = "Nie udalo sie wczytac wybranego elementu."
+        Case "FolderNotAbsolute": T_PL = "Podaj pelna sciezke folderu, np. D:\Dokumenty\Projekt. Sama nazwa folderu bylaby liczona od biezacego folderu SolidWorks i przy kazdym uzyciu powstawalby kolejny podfolder."
         Case "PromptTargetFolder": T_PL = "Folder docelowy:"
         Case "TitleDownloadFromPdm": T_PL = "Pobieranie z PDM"
         Case "TitleNewerRevision": T_PL = "Nowsza rewizja"
@@ -291,6 +292,7 @@ Private Function T_EN(ByVal key As String) As String
         Case "LoggedOutMessage": T_EN = "Logged out of EasyPDM."
         Case "CancelledNothingDownloaded": T_EN = "Cancelled -- nothing was downloaded."
         Case "SelectedItemLoadFailed": T_EN = "The selected item could not be loaded."
+        Case "FolderNotAbsolute": T_EN = "Enter the full path of the folder, e.g. D:\Documents\Project. A bare folder name would be taken from the current SolidWorks folder, adding another subfolder every time."
         Case "PromptTargetFolder": T_EN = "Target folder:"
         Case "TitleDownloadFromPdm": T_EN = "Download from PDM"
         Case "TitleNewerRevision": T_EN = "Newer revision"
@@ -341,6 +343,7 @@ Private Function T_DE(ByVal key As String) As String
         Case "LoggedOutMessage": T_DE = "Von EasyPDM abgemeldet."
         Case "CancelledNothingDownloaded": T_DE = "Abgebrochen -- es wurde nichts heruntergeladen."
         Case "SelectedItemLoadFailed": T_DE = "Das ausgewaehlte Element konnte nicht geladen werden."
+        Case "FolderNotAbsolute": T_DE = "Bitte den vollstaendigen Pfad des Ordners angeben, z. B. D:\Dokumente\Projekt. Ein blosser Ordnername wuerde vom aktuellen SolidWorks-Ordner aus gerechnet und bei jeder Verwendung einen weiteren Unterordner anlegen."
         Case "PromptTargetFolder": T_DE = "Zielordner:"
         Case "TitleDownloadFromPdm": T_DE = "Download von PDM"
         Case "TitleNewerRevision": T_DE = "Neuere Revision"
@@ -424,8 +427,37 @@ End Sub
 
 ' Same registry key as the target folder in EasyPDMUpload.bas -- deliberately shared, so
 ' downloaded and uploaded files can land in the same place.
+' A folder typed without a drive or UNC root (e.g. "test") is relative to the current
+' directory, which SolidWorks moves to the folder of the last opened document -- the folder
+' just downloaded into. Stored as typed, the next default "test" then meant one level deeper,
+' and each run nested another "test" (GitHub issue #1). So only absolute paths are accepted
+' and remembered, and a relative one stored by an older macro is not offered again.
 Function GetDownloadFolder() As String
     GetDownloadFolder = GetSetting(APP_SETTINGS_NAME, SETTINGS_SECTION, "DownloadFolder", "")
+    If Not IsAbsoluteFolder(GetDownloadFolder) Then GetDownloadFolder = ""
+End Function
+
+Function IsAbsoluteFolder(ByVal path As String) As Boolean
+    If Len(path) >= 3 And Mid(path, 2, 2) = ":\" And UCase(Left(path, 1)) Like "[A-Z]" Then
+        IsAbsoluteFolder = True
+    ElseIf Left(path, 2) = "\\" And Len(path) > 2 Then
+        IsAbsoluteFolder = True
+    End If
+End Function
+
+' Asks for the target folder until an absolute path is given; "" when cancelled. The trailing
+' backslash is dropped after the check, so "D:\" is accepted (and stored as "D:", as before).
+Function AskTargetFolder(ByVal prompt As String, ByVal title As String) As String
+    Dim answer As String
+    answer = GetDownloadFolder()
+    Do
+        answer = Trim(InputBox(prompt, title, answer))
+        If answer = "" Then Exit Function
+        If IsAbsoluteFolder(answer) Then Exit Do
+        MsgBoxFront T("FolderNotAbsolute"), vbExclamation, T("AppTitle")
+    Loop
+    If Right(answer, 1) = "\" Then answer = Left(answer, Len(answer) - 1)
+    AskTargetFolder = answer
 End Function
 
 Sub SetDownloadFolder(ByVal folder As String)
@@ -1736,13 +1768,9 @@ Sub main()
         Exit Sub
     End If
 
-    Dim defaultFolder As String
-    defaultFolder = GetDownloadFolder()
     Dim targetDir As String
-    targetDir = InputBox(T("PromptTargetFolder"), T("TitleDownloadFromPdm"), defaultFolder)
-    targetDir = Trim(targetDir)
+    targetDir = AskTargetFolder(T("PromptTargetFolder"), T("TitleDownloadFromPdm"))
     If targetDir = "" Then Exit Sub
-    If Right(targetDir, 1) = "\" Then targetDir = Left(targetDir, Len(targetDir) - 1)
 
     On Error GoTo Failed
     EnsureDirectory targetDir

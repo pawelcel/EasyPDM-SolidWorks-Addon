@@ -6,6 +6,9 @@ and the drawing sheet were released with EasyPDM itself; see the
 
 ## [Unreleased]
 
+### Fixed
+- **Nested target folders.** A target folder typed as a bare name (e.g. `test`) was taken relative to the current SolidWorks folder, which is the folder last downloaded into, so every Download or Upload added another level (`D:\Documents\test\test\test…`). Both macros now ask for a full path (`D:\…` or `\\server\…`) and no longer offer a relative one remembered by an older version. ([#1](https://github.com/pawelcel/EasyPDM-SolidWorks-Addon/issues/1))
+
 ## [0.9.1]
 
 **In short:** assembly drawings get a parts list, and their balloons follow it. Upload draws the assembly's direct components as a table above the processes table, numbered by their position in the structure in EasyPDM, and sets the drawing's balloons to the same numbers. Needs [EasyPDM 0.9.4](https://github.com/pawelcel/EasyPDM/releases/tag/v0.9.4) or later.
